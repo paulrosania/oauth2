@@ -210,6 +210,50 @@ func TestExchangeRequest_NonBasicAuth(t *testing.T) {
 	conf.Exchange(ctx, "code")
 }
 
+func TestAuthorizeRequest(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.String() != "/token" {
+			t.Errorf("Unexpected exchange request URL, %v is found.", r.URL)
+		}
+		headerAuth := r.Header.Get("Authorization")
+		if headerAuth != "Basic Q0xJRU5UX0lEOkNMSUVOVF9TRUNSRVQ=" {
+			t.Errorf("Unexpected authorization header, %v is found.", headerAuth)
+		}
+		headerContentType := r.Header.Get("Content-Type")
+		if headerContentType != "application/x-www-form-urlencoded" {
+			t.Errorf("Unexpected Content-Type header, %v is found.", headerContentType)
+		}
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("Failed reading request body: %s.", err)
+		}
+		if string(body) != "client_id=CLIENT_ID&grant_type=password&password=password1&scope=scope1+scope2&username=user1" {
+			t.Errorf("Unexpected authorize payload, %v is found.", string(body))
+		}
+		w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+		w.Write([]byte("access_token=90d64460d14870c08c81352a05dedd3465940a7c&scope=user&token_type=bearer"))
+	}))
+	defer ts.Close()
+	conf := newConf(ts.URL)
+	tok, err := conf.Authorize(NoContext, "user1", "password1")
+	if err != nil {
+		t.Error(err)
+	}
+	if !tok.Valid() {
+		t.Fatalf("Token invalid. Got: %#v", tok)
+	}
+	if tok.AccessToken != "90d64460d14870c08c81352a05dedd3465940a7c" {
+		t.Errorf("Unexpected access token, %#v.", tok.AccessToken)
+	}
+	if tok.TokenType != "bearer" {
+		t.Errorf("Unexpected token type, %#v.", tok.TokenType)
+	}
+	scope := tok.Extra("scope")
+	if scope != "user" {
+		t.Errorf("Unexpected value for scope: %v", scope)
+	}
+}
+
 func TestTokenRefreshRequest(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.String() == "/somethingelse" {
